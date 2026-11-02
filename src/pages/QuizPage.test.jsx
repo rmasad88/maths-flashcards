@@ -76,6 +76,34 @@ describe('QuizPage', () => {
     expect(store.updateCard).toHaveBeenCalledWith('a', nextState);
     expect(store.logReview).toHaveBeenCalledTimes(1);
     expect(store.logReview).toHaveBeenCalledWith({ cardId: 'a', grade, at: 5000 });
+    expect(store.updateCard.mock.invocationCallOrder[0]).toBeLessThan(
+      store.logReview.mock.invocationCallOrder[0],
+    );
+  });
+
+  // React batches state updates until the click handler ends, so a page that advanced before
+  // saving would look the same on the success path. A failing save is what exposes it.
+  it.each([
+    ['updateCard', /could not save/i, 0],
+    ['logReview', /rescheduled.*not logged/i, 1],
+  ])('stays on the card and says so when %s throws', (method, message, logCalls) => {
+    store[method].mockImplementationOnce(() => {
+      throw new Error('storage full');
+    });
+    renderWithCards([first, second]);
+    revealAndGrade('good');
+
+    expect(screen.getByRole('alert').textContent).toMatch(message);
+    expect(screen.getByText('Front one')).toBeTruthy();
+    expect(screen.getByText('Back one')).toBeTruthy();
+    expect(screen.queryByText('Front two')).toBeNull();
+    expect(store.logReview).toHaveBeenCalledTimes(logCalls);
+
+    // Grading again retries the save, then clears the message and moves on.
+    fireEvent.click(screen.getByRole('button', { name: /^good$/i }));
+
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByText('Front two')).toBeTruthy();
   });
 
   it('moves to the next card with its answer hidden after grading', () => {
@@ -100,8 +128,12 @@ describe('QuizPage', () => {
   });
 
   it('typesets card text through Maths', () => {
-    const { container } = renderWithCards([{ ...first, front: 'Area: $\\pi r^2$' }]);
+    const { container } = renderWithCards([{ ...first, front: '$\\pi r^2$', back: '$x^2$' }]);
 
-    expect(container.querySelector('.katex')).not.toBeNull();
+    expect(container.querySelectorAll('.katex')).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: /show answer/i }));
+
+    expect(container.querySelectorAll('.katex')).toHaveLength(2);
   });
 });

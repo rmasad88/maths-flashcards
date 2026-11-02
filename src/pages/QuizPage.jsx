@@ -7,6 +7,7 @@ const GRADES = ['again', 'hard', 'good', 'easy'];
 
 export default function QuizPage() {
   const [session, setSession] = useState(() => startSession(getStore().listCards(), Date.now()));
+  const [saveError, setSaveError] = useState(null);
 
   const status = sessionStatus(session);
 
@@ -36,8 +37,20 @@ export default function QuizPage() {
   function grade(chosen) {
     const result = gradeCard(session, chosen, Date.now());
     const store = getStore();
-    store.updateCard(result.cardId, result.changes);
-    store.logReview(result.review);
+    let rescheduled = false;
+    try {
+      store.updateCard(result.cardId, result.changes);
+      rescheduled = true;
+      store.logReview(result.review);
+    } catch {
+      setSaveError(
+        rescheduled
+          ? 'This card was rescheduled, but its review was not logged. Grade it again to retry.'
+          : 'Could not save this card. Grade it again to retry.',
+      );
+      return;
+    }
+    setSaveError(null);
     setSession(result.session);
   }
 
@@ -64,6 +77,7 @@ export default function QuizPage() {
               {name[0].toUpperCase() + name.slice(1)}
             </button>
           ))}
+          {saveError && <p role="alert">{saveError}</p>}
         </>
       )}
     </>
