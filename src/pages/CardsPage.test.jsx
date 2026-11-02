@@ -235,6 +235,38 @@ describe('CardsPage', () => {
     expect(cardItems()).toHaveLength(1);
   });
 
+  it('keeps the typed text and says why when the edited card was deleted elsewhere', () => {
+    const card = getStore().addCard({ front: 'old', back: 'b', topic: 't' }, 1);
+    render(<CardsPage />);
+    fireEvent.click(within(cardItems()[0]).getByRole('button', { name: 'Edit' }));
+    type('Front', 'typed text');
+    getStore().deleteCard(card.id);
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(screen.getByRole('alert').textContent).toMatch(/no longer exists/i);
+    expect(screen.getByLabelText('Front').value).toBe('typed text');
+    expect(cardItems()).toHaveLength(0);
+
+    // The form is now a new card, so the text can still be saved.
+    fireEvent.click(addButton());
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(getStore().listCards()[0].front).toBe('typed text');
+  });
+
+  it('clears the save error on Cancel', () => {
+    getStore().addCard({ front: 'old', back: 'b', topic: 't' }, 1);
+    render(<CardsPage />);
+    fireEvent.click(within(cardItems()[0]).getByRole('button', { name: 'Edit' }));
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('quota exceeded');
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(screen.getByRole('alert')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('handles corrupt stored data as an empty list', () => {
     localStorage.setItem('maths-flashcards:cards', '{not json');
     render(<CardsPage />);

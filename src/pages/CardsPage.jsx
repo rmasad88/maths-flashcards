@@ -29,6 +29,7 @@ export default function CardsPage() {
   function resetForm() {
     setForm(EMPTY_FORM);
     setEditingId(null);
+    setError(null);
   }
 
   // Runs a store write. A failure, such as full storage, shows a message and leaves the form alone.
@@ -50,14 +51,19 @@ export default function CardsPage() {
     if (!canSave) {
       return;
     }
+    let missing = false;
     const saved = attempt(() => {
       if (editingId) {
-        store.updateCard(editingId, trimmed);
+        missing = store.updateCard(editingId, trimmed) === null;
       } else {
         store.addCard(trimmed, Date.now());
       }
     });
-    if (saved) {
+    // The card was deleted elsewhere, perhaps in another tab, so offer the text as a new card.
+    if (missing) {
+      setEditingId(null);
+      setError('This card no longer exists. Your text is still here, to add as a new card.');
+    } else if (saved) {
       resetForm();
     }
   }
