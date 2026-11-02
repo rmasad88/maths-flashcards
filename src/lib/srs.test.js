@@ -102,10 +102,17 @@ describe('hard and easy compared with good', () => {
     expect([hard.intervalDays, good.intervalDays, easy.intervalDays]).toEqual([1, 1, 2]);
   });
 
+  it('ties hard and good straight after again too, with hard still lowering the ease', () => {
+    const lapsed = review({ ease: 2.5, intervalDays: 95, repetitions: 5, dueAt: NOW }, 'again', NOW);
+    const { hard, good, easy } = allGrades(lapsed);
+    expect([hard.intervalDays, good.intervalDays, easy.intervalDays]).toEqual([1, 1, 2]);
+    expect(hard.ease).toBeLessThan(good.ease);
+  });
+
   it('orders them at the minimum ease, where rounding could tie them', () => {
     const { hard, good, easy } = allGrades({
       ease: 1.3,
-      intervalDays: 3,
+      intervalDays: 1,
       repetitions: 4,
       dueAt: NOW,
     });

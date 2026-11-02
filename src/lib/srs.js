@@ -12,6 +12,7 @@ export function newSrsState(now) {
 }
 
 function goodInterval({ ease, intervalDays, repetitions }) {
+  // Ties with hard whenever repetitions is 0: on a new card and straight after "again".
   if (repetitions === 0) return 1;
   if (repetitions === 1) return 6;
   // At low ease, rounding alone could leave a short interval stuck at the same length.
@@ -19,6 +20,7 @@ function goodInterval({ ease, intervalDays, repetitions }) {
 }
 
 function nextInterval(state, grade) {
+  // One day, with no same-session retry as classic SM-2 has; a session must re-queue the card itself.
   if (grade === 'again') return 1;
   // Hard repeats the last gap, so it never shortens the interval or passes good.
   if (grade === 'hard') return Math.max(1, state.intervalDays);
