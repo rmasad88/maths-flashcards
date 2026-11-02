@@ -144,6 +144,21 @@ describe('gradeCard', () => {
     expect(changes.dueAt).toBe(NOW + 60000 + 2 * DAY_MS);
     expect(changes.repetitions).toBe(1);
   });
+
+  it('does not mutate the session it is given', () => {
+    const session = revealAnswer(startSession([], NOW));
+    gradeCard(session, 'good', NOW);
+
+    expect(currentCard(session)).toBe(first);
+    expect(sessionStatus(session)).toBe('answer');
+  });
+
+  it('refuses a grade before the answer is revealed', () => {
+    const session = startSession([], NOW);
+
+    expect(() => gradeCard(session, 'good', NOW)).toThrow();
+    expect(review).not.toHaveBeenCalled();
+  });
 });
 
 describe('cardsLeft and cardsCompleted', () => {
@@ -168,20 +183,5 @@ describe('cardsLeft and cardsCompleted', () => {
     expect(cardsLeft(session)).toBe(0);
     expect(cardsCompleted(session)).toBe(2);
     expect(session.reviewed).toBe(4);
-  });
-
-  it('does not mutate the session it is given', () => {
-    const session = revealAnswer(startSession([], NOW));
-    gradeCard(session, 'good', NOW);
-
-    expect(currentCard(session)).toBe(first);
-    expect(sessionStatus(session)).toBe('answer');
-  });
-
-  it('refuses a grade before the answer is revealed', () => {
-    const session = startSession([], NOW);
-
-    expect(() => gradeCard(session, 'good', NOW)).toThrow();
-    expect(review).not.toHaveBeenCalled();
   });
 });

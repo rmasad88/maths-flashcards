@@ -171,7 +171,12 @@ describe('QuizPage', () => {
     renderWithCards([first]);
     revealAndGrade('again');
     fireEvent.click(screen.getByRole('button', { name: /^again$/i }));
-    revealAndGrade('good');
+    fireEvent.click(screen.getByRole('button', { name: /show answer/i }));
+
+    // The message only shows with an answer, so this is the first place a stale one would appear.
+    expect(screen.queryByRole('alert')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /^good$/i }));
 
     expect(screen.getByText(/reviewed 1 card in 2 reviews/i)).toBeTruthy();
   });

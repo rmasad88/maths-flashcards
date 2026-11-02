@@ -57,8 +57,8 @@ export default function QuizPage() {
     } catch {
       setSaveError(
         rescheduled
-          ? 'This card was rescheduled, but its review was not logged. Grade it again to retry.'
-          : 'Could not save this card. Grade it again to retry.',
+          ? 'This card was rescheduled, but its review was not logged. Choose a grade to retry.'
+          : 'Could not save this card. Choose a grade to retry.',
       );
       return;
     }
