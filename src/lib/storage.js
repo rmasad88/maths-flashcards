@@ -2,6 +2,7 @@ import { newSrsState } from './srs.js';
 
 const CARDS_KEY = 'maths-flashcards:cards';
 const REVIEWS_KEY = 'maths-flashcards:reviews';
+const SEEDED_KEY = 'maths-flashcards:seeded';
 const GRADES = ['again', 'hard', 'good', 'easy'];
 
 /**
@@ -51,6 +52,12 @@ function newId(now) {
   return `${now.toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
+function newCard({ front, back, topic }, now) {
+  const card = { id: newId(now), front, back, topic, createdAt: now, ...newSrsState(now) };
+  assertValid(card, isCard, 'card');
+  return card;
+}
+
 // True when a stored value holds nothing worth keeping, so it must not replace a good backup.
 function isEmptyValue(raw) {
   if (raw === null || raw.trim() === '') {
@@ -66,15 +73,18 @@ function isEmptyValue(raw) {
 
 /**
  * Nothing is cached: every call reads the backend, so results are always fresh copies.
- * Reads never throw: corrupt or missing data reads as empty, and invalid entries are dropped.
+ * List reads never throw: corrupt or missing data reads as empty, and invalid entries are dropped.
  * Writes throw if the backend throws, if the stored value could not be read, or if the data would
  * be invalid. A write that would replace damaged data first copies the whole stored value to
  * `<key>:backup`, one per list, which holds the latest damage found. Nothing restores it yet.
  *
  * @param {Storage} [backend] anything with getItem and setItem; localStorage by default
  * @returns a store: { listCards(), getCard(id), addCard({front, back, topic}, now),
- *   updateCard(id, changes), deleteCard(id), logReview(review), listReviews() }
+ *   addCards(list, now), updateCard(id, changes), deleteCard(id), logReview(review),
+ *   listReviews(), isSeeded(), markSeeded() }
  *   addCard fills in id, createdAt and the newSrsState fields, and returns the card.
+ *   addCards does the same for a list in one write, so it saves all of them or none.
+ *   isSeeded throws if the flag cannot be read, because a wrong answer could replace stored cards.
  *   getCard and updateCard return null for an unknown id. updateCard returns the updated card.
  *   deleteCard keeps the card's reviews, so stats history survives; expect orphaned cardIds.
  */
@@ -127,11 +137,16 @@ export function createStore(backend) {
       return listCards().find((card) => card.id === id) ?? null;
     },
 
-    addCard({ front, back, topic }, now = Date.now()) {
-      const card = { id: newId(now), front, back, topic, createdAt: now, ...newSrsState(now) };
-      assertValid(card, isCard, 'card');
+    addCard(fields, now = Date.now()) {
+      const card = newCard(fields, now);
       rewrite(CARDS_KEY, isCard, (cards) => [...cards, card]);
       return card;
+    },
+
+    addCards(list, now = Date.now()) {
+      const added = list.map((fields) => newCard(fields, now));
+      rewrite(CARDS_KEY, isCard, (cards) => [...cards, ...added]);
+      return added;
     },
 
     updateCard(id, changes) {
@@ -159,6 +174,15 @@ export function createStore(backend) {
     logReview(review) {
       assertValid(review, isReview, 'review');
       rewrite(REVIEWS_KEY, isReview, (reviews) => [...reviews, review]);
+    },
+
+    // Any stored value counts, so a damaged flag can never bring the deck back.
+    isSeeded() {
+      return target().getItem(SEEDED_KEY) !== null;
+    },
+
+    markSeeded() {
+      target().setItem(SEEDED_KEY, 'true');
     },
   };
 }
