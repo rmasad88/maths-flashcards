@@ -55,6 +55,21 @@ describe('STARTER_DECK', () => {
     expect(new Set(STARTER_DECK.map((card) => card.front)).size).toBe(STARTER_DECK.length);
   });
 
+  it('states the sign convention on every card with a signed error term', () => {
+    const signed = STARTER_DECK.filter((card) => /\$-\\frac/.test(card.back));
+
+    expect(signed).toHaveLength(4);
+    for (const card of signed) {
+      expect(card.back).toContain('exact minus approximation');
+    }
+  });
+
+  it('says the QR least-squares card holds for the thin factorisation', () => {
+    const qr = STARTER_DECK.find((card) => card.front.includes('QR'));
+
+    expect(qr.back).toMatch(/thin/);
+  });
+
   const sides = STARTER_DECK.flatMap((card) => [
     ['front', card.front],
     ['back', card.back],

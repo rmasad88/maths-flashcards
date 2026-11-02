@@ -38,7 +38,7 @@ export const STARTER_DECK = [
   {
     topic: LINEAR,
     front: tex`How does QR solve the least-squares problem $\min_x \|Ax - b\|_2$, and why is it preferred to the normal equations?`,
-    back: tex`With $A = QR$ of full column rank, solve $Rx = Q^T b$. The normal equations $A^T A x = A^T b$ square the condition number: $\kappa_2(A^T A) = \kappa_2(A)^2$.`,
+    back: tex`For $A$ of full column rank, take the thin factorisation $A = QR$, with $R$ square and invertible, and solve $Rx = Q^T b$. The normal equations $A^T A x = A^T b$ square the condition number: $\kappa_2(A^T A) = \kappa_2(A)^2$.`,
   },
   {
     topic: EIGEN,
@@ -93,7 +93,7 @@ export const STARTER_DECK = [
   {
     topic: QUADRATURE,
     front: tex`State the composite trapezium rule on $[a, b]$ with spacing $h$, and its error.`,
-    back: tex`$$\int_a^b f \approx h \left[ \tfrac{1}{2} f_0 + f_1 + \cdots + f_{n-1} + \tfrac{1}{2} f_n \right]$$ The error is $-\frac{(b-a) h^2}{12} f''(\xi)$, which is $O(h^2)$.`,
+    back: tex`$$\int_a^b f \approx h \left[ \tfrac{1}{2} f_0 + f_1 + \cdots + f_{n-1} + \tfrac{1}{2} f_n \right]$$ The error, exact minus approximation, is $-\frac{(b-a) h^2}{12} f''(\xi)$, which is $O(h^2)$.`,
   },
   {
     topic: QUADRATURE,
@@ -103,17 +103,17 @@ export const STARTER_DECK = [
   {
     topic: DIFFERENCES,
     front: tex`State the forward difference for $f'(x)$, and its truncation error.`,
-    back: tex`$$f'(x) \approx \frac{f(x+h) - f(x)}{h}$$ The error is $-\frac{h}{2} f''(\xi)$, which is $O(h)$.`,
+    back: tex`$$f'(x) \approx \frac{f(x+h) - f(x)}{h}$$ The error, exact minus approximation, is $-\frac{h}{2} f''(\xi)$, which is $O(h)$.`,
   },
   {
     topic: DIFFERENCES,
     front: tex`State the central difference for $f'(x)$, and its truncation error.`,
-    back: tex`$$f'(x) \approx \frac{f(x+h) - f(x-h)}{2h}$$ The error is $-\frac{h^2}{6} f'''(\xi)$, which is $O(h^2)$.`,
+    back: tex`$$f'(x) \approx \frac{f(x+h) - f(x-h)}{2h}$$ The error, exact minus approximation, is $-\frac{h^2}{6} f'''(\xi)$, which is $O(h^2)$.`,
   },
   {
     topic: DIFFERENCES,
     front: tex`State the standard central difference for $f''(x)$, and its truncation error.`,
-    back: tex`$$f''(x) \approx \frac{f(x+h) - 2 f(x) + f(x-h)}{h^2}$$ The error is $-\frac{h^2}{12} f^{(4)}(\xi)$, which is $O(h^2)$.`,
+    back: tex`$$f''(x) \approx \frac{f(x+h) - 2 f(x) + f(x-h)}{h^2}$$ The error, exact minus approximation, is $-\frac{h^2}{12} f^{(4)}(\xi)$, which is $O(h^2)$.`,
   },
 ];
 
