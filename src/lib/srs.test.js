@@ -216,6 +216,8 @@ describe('dueAt counts local calendar days', () => {
       expect(dueIn(2, graded)).toBe(Date.UTC(2026, 2, 9, 4));
       // Noon EST on 5 March, six days on.
       expect(dueIn(6, Date.UTC(2026, 2, 5, 17))).toBe(Date.UTC(2026, 2, 11, 4));
+      // 23:30 EST on 7 March: 24 hours on is already the 9th, because the 8th is short.
+      expect(dueIn(1, Date.UTC(2026, 2, 8, 4, 30))).toBe(Date.UTC(2026, 2, 8, 5));
     });
 
     it('keeps midnight when the clocks go back, on the long 1 November 2026', () => {
@@ -225,6 +227,8 @@ describe('dueAt counts local calendar days', () => {
       expect(dueIn(2, graded)).toBe(Date.UTC(2026, 10, 2, 5));
       // 23:00 EST on 1 November, the last hour of the long day.
       expect(dueIn(1, Date.UTC(2026, 10, 2, 4))).toBe(Date.UTC(2026, 10, 2, 5));
+      // 00:30 EDT on 1 November: 24 hours on is still the 1st, because that day is long.
+      expect(dueIn(1, Date.UTC(2026, 10, 1, 4, 30))).toBe(Date.UTC(2026, 10, 2, 5));
     });
   });
 
