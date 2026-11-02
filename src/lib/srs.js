@@ -1,8 +1,32 @@
-// Interface stub, so every branch builds. Issue "Spaced-repetition logic" implements it.
+// A simplified SM-2 schedule, as pure functions.
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const STARTING_EASE = 2.5;
+const MINIMUM_EASE = 1.3;
+const EASY_BONUS = 1.3;
+const EASE_CHANGE = { again: -0.2, hard: -0.15, good: 0, easy: 0.15 };
 
 /** @returns {{ease: number, intervalDays: number, repetitions: number, dueAt: number}} */
 export function newSrsState(now) {
-  throw new Error('srs.js: not implemented');
+  return { ease: STARTING_EASE, intervalDays: 0, repetitions: 0, dueAt: now };
+}
+
+function goodInterval({ ease, intervalDays, repetitions }) {
+  // Ties with hard whenever repetitions is 0: on a new card and straight after "again".
+  if (repetitions === 0) return 1;
+  if (repetitions === 1) return 6;
+  // At low ease, rounding alone could leave a short interval stuck at the same length.
+  return Math.max(intervalDays + 1, Math.round(intervalDays * ease));
+}
+
+function nextInterval(state, grade) {
+  // One day, with no same-session retry as classic SM-2 has; a session must re-queue the card itself.
+  if (grade === 'again') return 1;
+  // Hard repeats the last gap, so it never shortens the interval or passes good.
+  if (grade === 'hard') return Math.max(1, state.intervalDays);
+  if (grade === 'good') return goodInterval(state);
+  // Rounding up keeps easy strictly longer than good, even at one day.
+  return Math.ceil(goodInterval(state) * EASY_BONUS);
 }
 
 /**
@@ -12,10 +36,19 @@ export function newSrsState(now) {
  * @returns the next { ease, intervalDays, repetitions, dueAt }
  */
 export function review(state, grade, now) {
-  throw new Error('srs.js: not implemented');
+  if (!Object.hasOwn(EASE_CHANGE, grade)) {
+    throw new Error(`srs.js: unknown grade "${grade}"`);
+  }
+  const intervalDays = nextInterval(state, grade);
+  return {
+    ease: Math.max(MINIMUM_EASE, state.ease + EASE_CHANGE[grade]),
+    intervalDays,
+    repetitions: grade === 'again' ? 0 : state.repetitions + 1,
+    dueAt: now + intervalDays * DAY_MS,
+  };
 }
 
 /** @returns the cards with dueAt <= now, most overdue first */
 export function dueCards(cards, now) {
-  throw new Error('srs.js: not implemented');
+  return cards.filter((card) => card.dueAt <= now).sort((a, b) => a.dueAt - b.dueAt);
 }
