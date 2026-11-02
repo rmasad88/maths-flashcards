@@ -1,6 +1,5 @@
 // A simplified SM-2 schedule, as pure functions.
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const STARTING_EASE = 2.5;
 const MINIMUM_EASE = 1.3;
 const EASY_BONUS = 1.3;
@@ -29,7 +28,15 @@ function nextInterval(state, grade) {
   return Math.ceil(goodInterval(state) * EASY_BONUS);
 }
 
+function startOfLocalDayAfter(now, days) {
+  const date = new Date(now);
+  // Calendar arithmetic: Date rolls over months and finds the day's first moment across clock changes.
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days).getTime();
+}
+
 /**
+ * dueAt is the start of the local day intervalDays days after now.
+ *
  * @param state a card, or any object with the newSrsState fields
  * @param {'again'|'hard'|'good'|'easy'} grade
  * @param {number} now epoch milliseconds
@@ -44,7 +51,7 @@ export function review(state, grade, now) {
     ease: Math.max(MINIMUM_EASE, state.ease + EASE_CHANGE[grade]),
     intervalDays,
     repetitions: grade === 'again' ? 0 : state.repetitions + 1,
-    dueAt: now + intervalDays * DAY_MS,
+    dueAt: startOfLocalDayAfter(now, intervalDays),
   };
 }
 
