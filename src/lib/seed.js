@@ -117,12 +117,18 @@ export const STARTER_DECK = [
   },
 ];
 
-/** Adds the starter deck if the store has no cards. */
+/**
+ * Adds the starter deck on first run only, recorded by a flag in the store.
+ * A store that already holds cards gets the flag without the deck.
+ * Throws if storage fails, leaving no partial deck.
+ */
 export function seedIfEmpty(store, now) {
-  if (store.listCards().length > 0) {
+  if (store.isSeeded()) {
     return;
   }
-  for (const card of STARTER_DECK) {
-    store.addCard(card, now);
+  if (store.listCards().length === 0) {
+    store.addCards(STARTER_DECK, now);
   }
+  // Set last, so a failed save is tried again on the next load.
+  store.markSeeded();
 }
