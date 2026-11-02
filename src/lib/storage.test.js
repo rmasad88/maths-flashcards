@@ -9,6 +9,8 @@ vi.mock('./srs.js', () => ({
 const NOW = 1_000_000;
 const CARDS_KEY = 'maths-flashcards:cards';
 const REVIEWS_KEY = 'maths-flashcards:reviews';
+const CARDS_BACKUP_KEY = 'maths-flashcards:cards:backup';
+const REVIEWS_BACKUP_KEY = 'maths-flashcards:reviews:backup';
 
 function fakeBackend(initial = {}) {
   const data = new Map(Object.entries(initial));
@@ -233,6 +235,150 @@ describe('createStore with corrupt or missing data', () => {
     });
     expect(store.listCards()).toEqual([]);
     expect(store.listReviews()).toEqual([]);
+  });
+});
+
+describe('createStore protects stored data from being overwritten', () => {
+  const unreadable = () => {
+    const backend = fakeBackend({ [CARDS_KEY]: JSON.stringify([validCard]) });
+    const setItem = vi.spyOn(backend, 'setItem');
+    backend.getItem = () => {
+      throw new Error('access denied');
+    };
+    return { backend, setItem };
+  };
+
+  it.each([
+    ['addCard', (store) => store.addCard(fields, NOW)],
+    ['updateCard', (store) => store.updateCard('a', { back: 'x' })],
+    ['deleteCard', (store) => store.deleteCard('a')],
+    ['logReview', (store) => store.logReview(validReview)],
+  ])('%s throws and writes nothing while getItem throws', (_name, write) => {
+    const { backend, setItem } = unreadable();
+    expect(() => write(createStore(backend))).toThrow('access denied');
+    expect(setItem).not.toHaveBeenCalled();
+  });
+
+  it('backs up unparseable cards before the next write replaces them', () => {
+    const backend = fakeBackend({ [CARDS_KEY]: '{bad' });
+    const card = createStore(backend).addCard(fields, NOW);
+    expect(backend.getItem(CARDS_BACKUP_KEY)).toBe('{bad');
+    expect(JSON.parse(backend.getItem(CARDS_KEY))).toEqual([card]);
+  });
+
+  it('backs up unparseable reviews under their own key', () => {
+    const backend = fakeBackend({ [REVIEWS_KEY]: '{bad' });
+    createStore(backend).logReview(validReview);
+    expect(backend.getItem(REVIEWS_BACKUP_KEY)).toBe('{bad');
+    expect(backend.getItem(CARDS_BACKUP_KEY)).toBeNull();
+  });
+
+  it('backs up stored JSON that is not a list', () => {
+    const stored = '{"id":"a"}';
+    const backend = fakeBackend({ [CARDS_KEY]: stored });
+    createStore(backend).addCard(fields, NOW);
+    expect(backend.getItem(CARDS_BACKUP_KEY)).toBe(stored);
+  });
+
+  it('backs up the whole stored value when a write follows a dropped entry', () => {
+    const stored = JSON.stringify([{ ...validCard, id: 'bad', ease: null }, validCard]);
+    const backend = fakeBackend({ [CARDS_KEY]: stored });
+    const store = createStore(backend);
+    store.updateCard('a', { back: 'changed' });
+    expect(backend.getItem(CARDS_BACKUP_KEY)).toBe(stored);
+    expect(store.listCards()).toEqual([{ ...validCard, back: 'changed' }]);
+  });
+
+  it('backs up a dropped entry when deleting a different card', () => {
+    const stored = JSON.stringify([{ ...validCard, id: 'bad', ease: null }, validCard]);
+    const backend = fakeBackend({ [CARDS_KEY]: stored });
+    createStore(backend).deleteCard('a');
+    expect(backend.getItem(CARDS_BACKUP_KEY)).toBe(stored);
+    expect(JSON.parse(backend.getItem(CARDS_KEY))).toEqual([]);
+  });
+
+  it('backs up a dropped review when logging another', () => {
+    const stored = JSON.stringify([{ ...validReview, grade: 'great' }, validReview]);
+    const backend = fakeBackend({ [REVIEWS_KEY]: stored });
+    createStore(backend).logReview(validReview);
+    expect(backend.getItem(REVIEWS_BACKUP_KEY)).toBe(stored);
+  });
+
+  it.each([
+    ['deleteCard', (store) => store.deleteCard('nonexistent')],
+    ['updateCard', (store) => store.updateCard('nonexistent', { back: 'x' })],
+  ])('%s of an unknown id writes nothing, so a bad entry stays stored', (_name, write) => {
+    const stored = JSON.stringify([{ ...validCard, id: 'bad', ease: null }, validCard]);
+    const backend = fakeBackend({ [CARDS_KEY]: stored });
+    const setItem = vi.spyOn(backend, 'setItem');
+    write(createStore(backend));
+    expect(setItem).not.toHaveBeenCalled();
+    expect(backend.getItem(CARDS_KEY)).toBe(stored);
+  });
+
+  it('a refused write leaves the stored value and creates no backup', () => {
+    const stored = JSON.stringify([{ ...validCard, id: 'bad', ease: null }, validCard]);
+    const backend = fakeBackend({ [CARDS_KEY]: stored });
+    expect(() => createStore(backend).updateCard('a', { dueAt: NaN })).toThrow(TypeError);
+    expect(backend.getItem(CARDS_KEY)).toBe(stored);
+    expect(backend.getItem(CARDS_BACKUP_KEY)).toBeNull();
+  });
+
+  it('keeps the stored value when the backup itself cannot be written', () => {
+    const backend = fakeBackend({ [CARDS_KEY]: '{bad' });
+    const setItem = backend.setItem;
+    backend.setItem = (key, value) => {
+      if (key === CARDS_BACKUP_KEY) {
+        throw new Error('quota exceeded');
+      }
+      setItem(key, value);
+    };
+    expect(() => createStore(backend).addCard(fields, NOW)).toThrow('quota exceeded');
+    expect(backend.getItem(CARDS_KEY)).toBe('{bad');
+  });
+
+  it('keeps the backup when a corrupt store is reseeded at startup', () => {
+    const backend = fakeBackend({ [CARDS_KEY]: '{bad' });
+    const store = createStore(backend);
+    // What seedIfEmpty does: several writes, because the list reads as empty.
+    expect(store.listCards()).toEqual([]);
+    store.addCard(fields, NOW);
+    store.addCard(fields, NOW);
+    store.addCard(fields, NOW);
+
+    expect(backend.getItem(CARDS_BACKUP_KEY)).toBe('{bad');
+    expect(createStore(backend).listCards()).toHaveLength(3);
+  });
+
+  it('replaces an older backup when new damage is found', () => {
+    const backend = fakeBackend({ [CARDS_KEY]: '{new', [CARDS_BACKUP_KEY]: '{old' });
+    createStore(backend).addCard(fields, NOW);
+    expect(backend.getItem(CARDS_BACKUP_KEY)).toBe('{new');
+  });
+
+  it.each([
+    ['nothing stored', undefined],
+    ['an empty string', ''],
+    ['whitespace', '  '],
+    ['JSON null', 'null'],
+    ['an empty list', '[]'],
+    ['an empty object', '{}'],
+  ])('does not replace a backup with %s', (_name, stored) => {
+    const initial = { [CARDS_BACKUP_KEY]: '{precious' };
+    if (stored !== undefined) {
+      initial[CARDS_KEY] = stored;
+    }
+    const backend = fakeBackend(initial);
+    createStore(backend).addCard(fields, NOW);
+    expect(backend.getItem(CARDS_BACKUP_KEY)).toBe('{precious');
+  });
+
+  it('writes no backup for healthy data', () => {
+    const backend = fakeBackend({ [CARDS_KEY]: JSON.stringify([validCard]) });
+    const store = createStore(backend);
+    store.addCard(fields, NOW);
+    store.deleteCard('a');
+    expect(backend.getItem(CARDS_BACKUP_KEY)).toBeNull();
   });
 });
 

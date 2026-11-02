@@ -51,11 +51,25 @@ function newId(now) {
   return `${now.toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
+// True when a stored value holds nothing worth keeping, so it must not replace a good backup.
+function isEmptyValue(raw) {
+  if (raw === null || raw.trim() === '') {
+    return true;
+  }
+  try {
+    // Object() turns null, a number or a boolean into an object with no keys.
+    return Object.keys(Object(JSON.parse(raw))).length === 0;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Nothing is cached: every call reads the backend, so results are always fresh copies.
- * Corrupt or missing data reads as empty, and invalid entries in a list are dropped.
- * The next write to that list then replaces what was stored.
- * Writes throw if the backend throws, or if the data would be invalid.
+ * Reads never throw: corrupt or missing data reads as empty, and invalid entries are dropped.
+ * Writes throw if the backend throws, if the stored value could not be read, or if the data would
+ * be invalid. A write that would replace damaged data first copies the whole stored value to
+ * `<key>:backup`, one per list, which holds the latest damage found. Nothing restores it yet.
  *
  * @param {Storage} [backend] anything with getItem and setItem; localStorage by default
  * @returns a store: { listCards(), getCard(id), addCard({front, back, topic}, now),
@@ -68,17 +82,38 @@ export function createStore(backend) {
   // Looked up on use, because merely touching localStorage throws when site data is blocked.
   const target = () => backend ?? localStorage;
 
+  // Returns the usable items, the raw stored value, and whether reading it lost anything.
+  function parse(raw, isValid) {
+    try {
+      const stored = JSON.parse(raw);
+      const items = Array.isArray(stored) ? stored.filter(isValid) : [];
+      return { items, damaged: !Array.isArray(stored) || items.length < stored.length };
+    } catch {
+      return { items: [], damaged: true };
+    }
+  }
+
   function read(key, isValid) {
     try {
-      const stored = JSON.parse(target().getItem(key));
-      return Array.isArray(stored) ? stored.filter(isValid) : [];
+      return parse(target().getItem(key), isValid).items;
     } catch {
       return [];
     }
   }
 
-  function write(key, items) {
-    target().setItem(key, JSON.stringify(items));
+  // Applies change to the list and saves the result. A null result means nothing to save.
+  function rewrite(key, isValid, change) {
+    // Unlike read, this lets a failed getItem throw: the stored value may be fine, so keep it.
+    const raw = target().getItem(key);
+    const { items, damaged } = parse(raw, isValid);
+    const next = change(items);
+    if (next === null) {
+      return;
+    }
+    if (damaged && !isEmptyValue(raw)) {
+      target().setItem(`${key}:backup`, raw);
+    }
+    target().setItem(key, JSON.stringify(next));
   }
 
   const listCards = () => read(CARDS_KEY, isCard);
@@ -95,33 +130,35 @@ export function createStore(backend) {
     addCard({ front, back, topic }, now = Date.now()) {
       const card = { id: newId(now), front, back, topic, createdAt: now, ...newSrsState(now) };
       assertValid(card, isCard, 'card');
-      write(CARDS_KEY, [...listCards(), card]);
+      rewrite(CARDS_KEY, isCard, (cards) => [...cards, card]);
       return card;
     },
 
     updateCard(id, changes) {
-      const cards = listCards();
-      const index = cards.findIndex((card) => card.id === id);
-      if (index === -1) {
-        return null;
-      }
-      const updated = { ...cards[index], ...changes, id };
-      assertValid(updated, isCard, 'card');
-      cards[index] = updated;
-      write(CARDS_KEY, cards);
+      let updated = null;
+      rewrite(CARDS_KEY, isCard, (cards) => {
+        const index = cards.findIndex((card) => card.id === id);
+        if (index === -1) {
+          return null;
+        }
+        updated = { ...cards[index], ...changes, id };
+        assertValid(updated, isCard, 'card');
+        cards[index] = updated;
+        return cards;
+      });
       return updated;
     },
 
     deleteCard(id) {
-      write(
-        CARDS_KEY,
-        listCards().filter((card) => card.id !== id),
-      );
+      rewrite(CARDS_KEY, isCard, (cards) => {
+        const remaining = cards.filter((card) => card.id !== id);
+        return remaining.length === cards.length ? null : remaining;
+      });
     },
 
     logReview(review) {
       assertValid(review, isReview, 'review');
-      write(REVIEWS_KEY, [...listReviews(), review]);
+      rewrite(REVIEWS_KEY, isReview, (reviews) => [...reviews, review]);
     },
   };
 }
