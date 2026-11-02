@@ -1,8 +1,23 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { dueCards, newSrsState, review } from './srs.js';
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.UTC(2026, 0, 15, 12);
+
+// Pins the local time zone, so expected instants can be written in UTC, whatever the machine's zone.
+function useTimeZone(zone) {
+  let previous;
+  beforeAll(() => {
+    previous = process.env.TZ;
+    process.env.TZ = zone;
+  });
+  afterAll(() => {
+    if (previous === undefined) delete process.env.TZ;
+    else process.env.TZ = previous;
+  });
+}
+
+useTimeZone('America/New_York');
 
 // Applies grades in turn, one review per interval, and returns every state on the way.
 function reviewInSequence(grades, start = newSrsState(NOW)) {
@@ -31,7 +46,8 @@ describe('review with good', () => {
 
   it('sets dueAt from now, not from the old dueAt', () => {
     const overdue = { ease: 2.5, intervalDays: 6, repetitions: 2, dueAt: NOW - 30 * DAY };
-    expect(review(overdue, 'good', NOW).dueAt).toBe(NOW + 15 * DAY);
+    // 15 days after 15 January, at midnight in New York (UTC-5).
+    expect(review(overdue, 'good', NOW).dueAt).toBe(Date.UTC(2026, 0, 30, 5));
   });
 
   it('still grows a one-day interval at the minimum ease, where rounding would stall it', () => {
@@ -47,7 +63,7 @@ describe('review with again', () => {
     const next = review(learnt, 'again', NOW);
     expect(next.repetitions).toBe(0);
     expect(next.intervalDays).toBe(1);
-    expect(next.dueAt).toBe(NOW + DAY);
+    expect(next.dueAt).toBe(Date.UTC(2026, 0, 16, 5));
     expect(next.ease).toBeCloseTo(2.3);
   });
 
@@ -156,6 +172,78 @@ describe('review contract', () => {
 
   it('throws on an unknown grade rather than scheduling with NaN', () => {
     expect(() => review(newSrsState(NOW), 'perfect', NOW)).toThrow(/perfect/);
+  });
+});
+
+describe('dueAt counts local calendar days', () => {
+  // Hard repeats the last interval, so this schedules a card a chosen number of days ahead.
+  const dueIn = (intervalDays, now) =>
+    review({ ease: 2.5, intervalDays, repetitions: 3, dueAt: now }, 'hard', now).dueAt;
+
+  it('makes a card graded at 21:00 with a one-day interval due from local midnight', () => {
+    // 21:00 EST on 15 January is 02:00 UTC on the 16th; midnight EST on the 16th is 05:00 UTC.
+    const next = review(newSrsState(NOW), 'again', Date.UTC(2026, 0, 16, 2));
+    expect(next.dueAt).toBe(Date.UTC(2026, 0, 16, 5));
+  });
+
+  it('gives the same due time at any time of the graded day', () => {
+    const due = Date.UTC(2026, 0, 16, 5);
+    // 00:00 and 23:59 EST on 15 January.
+    expect(dueIn(1, Date.UTC(2026, 0, 15, 5))).toBe(due);
+    expect(dueIn(1, Date.UTC(2026, 0, 16, 4, 59))).toBe(due);
+  });
+
+  it('rolls over the end of a month and a year', () => {
+    // Noon EST on 20 December 2026, plus 15 days, is 4 January 2027.
+    expect(dueIn(15, Date.UTC(2026, 11, 20, 17))).toBe(Date.UTC(2027, 0, 4, 5));
+  });
+
+  it('uses the local day, not the UTC day, east of Greenwich', () => {
+    // No clock changes in Tokyo (UTC+9): 05:00 on 16 January is still the 15th in UTC.
+    process.env.TZ = 'Asia/Tokyo';
+    try {
+      expect(dueIn(1, Date.UTC(2026, 0, 15, 20))).toBe(Date.UTC(2026, 0, 16, 15));
+    } finally {
+      process.env.TZ = 'America/New_York';
+    }
+  });
+
+  describe('across a daylight-saving change in New York', () => {
+    it('keeps midnight when the clocks go forward, on the short 8 March 2026', () => {
+      // Graded 21:00 EST on 7 March: midnight on the 8th is EST, on the 9th it is EDT (UTC-4).
+      const graded = Date.UTC(2026, 2, 8, 2);
+      expect(dueIn(1, graded)).toBe(Date.UTC(2026, 2, 8, 5));
+      expect(dueIn(2, graded)).toBe(Date.UTC(2026, 2, 9, 4));
+      // Noon EST on 5 March, six days on.
+      expect(dueIn(6, Date.UTC(2026, 2, 5, 17))).toBe(Date.UTC(2026, 2, 11, 4));
+      // 23:30 EST on 7 March: 24 hours on is already the 9th, because the 8th is short.
+      expect(dueIn(1, Date.UTC(2026, 2, 8, 4, 30))).toBe(Date.UTC(2026, 2, 8, 5));
+    });
+
+    it('keeps midnight when the clocks go back, on the long 1 November 2026', () => {
+      // Graded 21:00 EDT on 31 October: midnight on 1 November is EDT, on the 2nd it is EST.
+      const graded = Date.UTC(2026, 10, 1, 1);
+      expect(dueIn(1, graded)).toBe(Date.UTC(2026, 10, 1, 4));
+      expect(dueIn(2, graded)).toBe(Date.UTC(2026, 10, 2, 5));
+      // 23:00 EST on 1 November, the last hour of the long day.
+      expect(dueIn(1, Date.UTC(2026, 10, 2, 4))).toBe(Date.UTC(2026, 10, 2, 5));
+      // 00:30 EDT on 1 November: 24 hours on is still the 1st, because that day is long.
+      expect(dueIn(1, Date.UTC(2026, 10, 1, 4, 30))).toBe(Date.UTC(2026, 10, 2, 5));
+    });
+  });
+
+  describe('where the clocks change at midnight, in Havana', () => {
+    useTimeZone('America/Havana');
+
+    it('uses the first moment of a day that has no midnight', () => {
+      // On 8 March 2026 Havana jumps from 00:00 to 01:00, which is 05:00 UTC.
+      expect(dueIn(1, Date.UTC(2026, 2, 8, 2))).toBe(Date.UTC(2026, 2, 8, 5));
+    });
+
+    it('uses the first of two midnights', () => {
+      // On 1 November 2026 Havana goes back from 01:00 to 00:00: 04:00 UTC, then 05:00 UTC.
+      expect(dueIn(1, Date.UTC(2026, 10, 1, 1))).toBe(Date.UTC(2026, 10, 1, 4));
+    });
   });
 });
 
