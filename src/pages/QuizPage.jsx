@@ -1,9 +1,21 @@
 import { useState } from 'react';
 import Maths from '../components/Maths.jsx';
 import { getStore } from '../lib/storage.js';
-import { currentCard, gradeCard, revealAnswer, sessionStatus, startSession } from '../lib/quizSession.js';
+import {
+  cardsCompleted,
+  cardsLeft,
+  currentCard,
+  gradeCard,
+  revealAnswer,
+  sessionStatus,
+  startSession,
+} from '../lib/quizSession.js';
 
 const GRADES = ['again', 'hard', 'good', 'easy'];
+
+function counted(count, noun) {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+}
 
 export default function QuizPage() {
   const [session, setSession] = useState(() => startSession(getStore().listCards(), Date.now()));
@@ -26,7 +38,7 @@ export default function QuizPage() {
         <h1>Quiz</h1>
         <p>Session complete.</p>
         <p>
-          You reviewed {session.reviewed} {session.reviewed === 1 ? 'card' : 'cards'}.
+          You reviewed {counted(cardsCompleted(session), 'card')} in {counted(session.reviewed, 'review')}.
         </p>
       </>
     );
@@ -57,9 +69,7 @@ export default function QuizPage() {
   return (
     <>
       <h1>Quiz</h1>
-      <p>
-        Card {session.reviewed + 1} of {session.queue.length}
-      </p>
+      <p>{counted(cardsLeft(session), 'card')} left</p>
       <div>
         <Maths text={card.front} />
       </div>
