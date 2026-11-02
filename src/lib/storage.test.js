@@ -382,6 +382,81 @@ describe('createStore protects stored data from being overwritten', () => {
   });
 });
 
+describe('createStore addCards', () => {
+  const list = [fields, { ...fields, front: 'Second' }];
+
+  it('adds every card in one write, after any cards already stored', () => {
+    const backend = fakeBackend();
+    const store = createStore(backend);
+    const existing = store.addCard(fields, 1);
+    const setItem = vi.spyOn(backend, 'setItem');
+
+    const added = store.addCards(list, NOW);
+
+    expect(setItem).toHaveBeenCalledTimes(1);
+    expect(added).toHaveLength(2);
+    expect(added[1]).toMatchObject({ front: 'Second', createdAt: NOW, dueAt: NOW, ease: 2.5 });
+    expect(added[0].id).not.toBe(added[1].id);
+    expect(store.listCards()).toEqual([existing, ...added]);
+  });
+
+  it('saves nothing if any card is invalid', () => {
+    const store = createStore(fakeBackend());
+    expect(() => store.addCards([fields, { front: 'no back or topic' }], NOW)).toThrow(TypeError);
+    expect(store.listCards()).toEqual([]);
+  });
+
+  it('saves nothing if the write fails', () => {
+    const backend = fakeBackend();
+    backend.setItem = () => {
+      throw new Error('quota exceeded');
+    };
+    const store = createStore(backend);
+    expect(() => store.addCards(list, NOW)).toThrow('quota exceeded');
+    expect(store.listCards()).toEqual([]);
+  });
+
+  it('backs up damaged data like any other write', () => {
+    const backend = fakeBackend({ [CARDS_KEY]: '{bad' });
+    createStore(backend).addCards(list, NOW);
+    expect(backend.getItem(CARDS_BACKUP_KEY)).toBe('{bad');
+  });
+
+  it('throws and writes nothing while getItem throws', () => {
+    const backend = fakeBackend();
+    const setItem = vi.spyOn(backend, 'setItem');
+    backend.getItem = () => {
+      throw new Error('access denied');
+    };
+    expect(() => createStore(backend).addCards(list, NOW)).toThrow('access denied');
+    expect(setItem).not.toHaveBeenCalled();
+  });
+});
+
+describe('createStore seeded flag', () => {
+  it('starts unset, and a new store on the same backend sees it once set', () => {
+    const backend = fakeBackend();
+    const store = createStore(backend);
+    expect(store.isSeeded()).toBe(false);
+    store.markSeeded();
+    expect(store.isSeeded()).toBe(true);
+    expect(createStore(backend).isSeeded()).toBe(true);
+  });
+
+  it('counts any stored value as set, so a damaged flag can never bring the deck back', () => {
+    const store = createStore(fakeBackend({ 'maths-flashcards:seeded': '{bad' }));
+    expect(store.isSeeded()).toBe(true);
+  });
+
+  it('isSeeded throws while getItem throws, rather than guessing', () => {
+    const backend = fakeBackend();
+    backend.getItem = () => {
+      throw new Error('access denied');
+    };
+    expect(() => createStore(backend).isSeeded()).toThrow('access denied');
+  });
+});
+
 describe('default backend', () => {
   beforeEach(() => {
     localStorage.clear();
