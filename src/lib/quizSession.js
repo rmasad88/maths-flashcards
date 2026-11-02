@@ -2,13 +2,13 @@ import { dueCards, review } from './srs.js';
 
 /**
  * @typedef {Object} QuizSession
- * @property {Array} queue the cards to quiz, in order
- * @property {number} reviewed how many of them have been graded
+ * @property {Array} queue the cards to quiz, in order; a card graded "again" is added again at the end
+ * @property {number} reviewed how many grades have been given, which is also the current queue position
  * @property {boolean} revealed whether the current card's answer is showing
  */
 
 /**
- * Starts a session on the cards due at `now`. Each due card is asked once.
+ * Starts a session on the cards due at `now`. Each due card is asked until it gets a grade other than "again".
  *
  * @returns {QuizSession}
  */
@@ -32,6 +32,16 @@ export function sessionStatus(session) {
   return session.revealed ? 'answer' : 'question';
 }
 
+/** @returns {number} how many cards still need a grade other than "again"; each is queued once ahead */
+export function cardsLeft(session) {
+  return session.queue.length - session.reviewed;
+}
+
+/** @returns {number} how many different cards have had a grade other than "again" */
+export function cardsCompleted(session) {
+  return new Set(session.queue.map((card) => card.id)).size - cardsLeft(session);
+}
+
 /** @returns {QuizSession} the session with the current card's answer showing */
 export function revealAnswer(session) {
   return { ...session, revealed: true };
@@ -51,10 +61,12 @@ export function gradeCard(session, grade, now) {
     throw new Error('gradeCard: no answer is showing');
   }
   const card = currentCard(session);
+  const changes = review(card, grade, now);
+  const queue = grade === 'again' ? [...session.queue, { ...card, ...changes }] : session.queue;
   return {
-    session: { ...session, reviewed: session.reviewed + 1, revealed: false },
+    session: { ...session, queue, reviewed: session.reviewed + 1, revealed: false },
     cardId: card.id,
-    changes: review(card, grade, now),
+    changes,
     review: { cardId: card.id, grade, at: now },
   };
 }

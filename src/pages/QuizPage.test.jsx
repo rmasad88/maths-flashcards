@@ -50,7 +50,7 @@ describe('QuizPage', () => {
     expect(screen.queryByText('Front two')).toBeNull();
     expect(screen.queryByText('Back one')).toBeNull();
     expect(screen.queryByRole('button', { name: /^good$/i })).toBeNull();
-    expect(screen.getByText(/card 1 of 2/i)).toBeTruthy();
+    expect(screen.getByText(/^2 cards left$/i)).toBeTruthy();
   });
 
   it('reveals the answer and all four grades on request', () => {
@@ -113,7 +113,7 @@ describe('QuizPage', () => {
     expect(screen.getByText('Front two')).toBeTruthy();
     expect(screen.queryByText('Back two')).toBeNull();
     expect(screen.queryByText('Front one')).toBeNull();
-    expect(screen.getByText(/card 2 of 2/i)).toBeTruthy();
+    expect(screen.getByText(/^1 card left$/i)).toBeTruthy();
   });
 
   it('says the session is over after the last card', () => {
@@ -122,9 +122,83 @@ describe('QuizPage', () => {
     revealAndGrade('easy');
 
     expect(screen.getByText(/session complete/i)).toBeTruthy();
-    expect(screen.getByText(/reviewed 2 cards/i)).toBeTruthy();
+    expect(screen.getByText(/reviewed 2 cards in 2 reviews/i)).toBeTruthy();
     expect(screen.queryByText(/nothing is due/i)).toBeNull();
     expect(store.logReview).toHaveBeenCalledTimes(2);
+  });
+
+  it('brings a card graded again back after the others, with its answer hidden', () => {
+    renderWithCards([first, second]);
+    revealAndGrade('again');
+
+    expect(screen.getByText('Front two')).toBeTruthy();
+    expect(screen.getByText(/^2 cards left$/i)).toBeTruthy();
+
+    revealAndGrade('good');
+
+    expect(screen.getByText('Front one')).toBeTruthy();
+    expect(screen.queryByText('Back one')).toBeNull();
+    expect(screen.getByText(/^1 card left$/i)).toBeTruthy();
+  });
+
+  it('saves and logs every grade of a retried card, and the last one wins', () => {
+    const afterAgain = { ...nextState, dueAt: 1000 };
+    const afterGood = { ...nextState, dueAt: 2000 };
+    vi.mocked(review).mockReturnValueOnce(afterAgain).mockReturnValueOnce(afterGood);
+    renderWithCards([first]);
+    revealAndGrade('again');
+    revealAndGrade('good');
+
+    expect(store.updateCard.mock.calls).toEqual([
+      ['a', afterAgain],
+      ['a', afterGood],
+    ]);
+    expect(store.logReview.mock.calls.map(([logged]) => logged.grade)).toEqual(['again', 'good']);
+    expect(screen.getByText(/reviewed 1 card in 2 reviews/i)).toBeTruthy();
+  });
+
+  it('counts one card and one review in the singular', () => {
+    renderWithCards([first]);
+    revealAndGrade('good');
+
+    expect(screen.getByText(/reviewed 1 card in 1 review\./i)).toBeTruthy();
+  });
+
+  it('queues a retried card once when its save had to be retried', () => {
+    store.logReview.mockImplementationOnce(() => {
+      throw new Error('storage full');
+    });
+    renderWithCards([first]);
+    revealAndGrade('again');
+    fireEvent.click(screen.getByRole('button', { name: /^again$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /show answer/i }));
+
+    // The message only shows with an answer, so this is the first place a stale one would appear.
+    expect(screen.queryByRole('alert')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /^good$/i }));
+
+    expect(screen.getByText(/reviewed 1 card in 2 reviews/i)).toBeTruthy();
+  });
+
+  it('keeps the saved schedule when the user leaves after grading again', () => {
+    const saved = new Map([[first.id, first]]);
+    store.listCards.mockImplementation(() => [...saved.values()]);
+    store.updateCard.mockImplementation((id, changes) => {
+      saved.set(id, { ...saved.get(id), ...changes });
+    });
+    vi.mocked(review).mockReturnValue({ ...nextState, dueAt: Infinity });
+
+    const { unmount } = render(<QuizPage />);
+    revealAndGrade('again');
+    unmount();
+
+    expect(saved.get('a').dueAt).toBe(Infinity);
+    expect(store.updateCard).toHaveBeenCalledTimes(1);
+
+    render(<QuizPage />);
+
+    expect(screen.getByText(/nothing is due/i)).toBeTruthy();
   });
 
   it('typesets card text through Maths', () => {
