@@ -267,6 +267,20 @@ describe('CardsPage', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
+  it('clears the error when starting to edit another card', () => {
+    const card = getStore().addCard({ front: 'gone', back: 'b', topic: 't' }, 1);
+    getStore().addCard({ front: 'other', back: 'b', topic: 't' }, 2);
+    render(<CardsPage />);
+    fireEvent.click(within(cardItems()[1]).getByRole('button', { name: 'Edit' }));
+    getStore().deleteCard(card.id);
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(screen.getByRole('alert').textContent).toMatch(/still here/i);
+
+    fireEvent.click(within(cardItems()[0]).getByRole('button', { name: 'Edit' }));
+    expect(screen.getByLabelText('Front').value).toBe('other');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('handles corrupt stored data as an empty list', () => {
     localStorage.setItem('maths-flashcards:cards', '{not json');
     render(<CardsPage />);

@@ -71,6 +71,7 @@ export default function CardsPage() {
   function startEditing(card) {
     setForm({ front: card.front, back: card.back, topic: card.topic });
     setEditingId(card.id);
+    setError(null);
   }
 
   function handleDelete(card) {
