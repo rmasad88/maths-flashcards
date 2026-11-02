@@ -62,6 +62,25 @@ describe('StatsPage', () => {
     expect(screen.queryByText(/no reviews yet/i)).toBeNull();
   });
 
+  it('still shows the figures with no cards left but some reviews', () => {
+    fakeStore([], [{ cardId: 'deleted', grade: 'good', at: Date.now() }]);
+    const { container } = render(<StatsPage />);
+    expect(screen.queryByText(/no cards yet/i)).toBeNull();
+    expect(screen.queryByText(/no reviews yet/i)).toBeNull();
+    expect(stat('Total cards')).toBe('0');
+    expect(stat('Reviews today')).toBe('1');
+    expect(stat('Accuracy')).toBe('100%');
+    expect(stat('Streak')).toBe('1 day');
+    expect(screen.queryByRole('heading', { name: 'Accuracy by topic' })).toBeNull();
+    expect(container.querySelector('.stats-bar')).toBeNull();
+  });
+
+  it('labels a card with an empty topic "No topic"', () => {
+    fakeStore([card('a', '', 0)], []);
+    const { container } = render(<StatsPage />);
+    expect(container.querySelector('.stats-topic').textContent).toContain('No topic');
+  });
+
   it('draws accuracy per topic as a CSS bar', () => {
     const now = Date.now();
     fakeStore(

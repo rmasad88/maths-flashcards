@@ -26,10 +26,23 @@ function streakOf(reviews, now) {
   return streak;
 }
 
+// A plain loop, because Vite's default browser target includes browsers without Map.groupBy.
+function groupBy(items, keyOf) {
+  const groups = new Map();
+  for (const item of items) {
+    const key = keyOf(item);
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key).push(item);
+  }
+  return groups;
+}
+
 // One row per topic that has cards. total counts cards, and accuracy comes from those cards' reviews.
 function topicsOf(cards, reviews) {
-  const reviewsByCard = Map.groupBy(reviews, (review) => review.cardId);
-  return [...Map.groupBy(cards, (card) => card.topic)]
+  const reviewsByCard = groupBy(reviews, (review) => review.cardId);
+  return [...groupBy(cards, (card) => card.topic)]
     .map(([topic, topicCards]) => ({
       topic,
       total: topicCards.length,
